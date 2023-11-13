@@ -5,15 +5,12 @@ import math
 import numpy as np
 import numpy.typing as npt
 from noise import pnoise2
-from pyrr import Vector3
-
-from revolve2.modular_robot_simulation import Terrain
-from revolve2.simulation.scene import Pose
-from revolve2.simulation.scene.geometry import GeometryHeightmap, GeometryPlane
-from revolve2.simulation.scene.vector2 import Vector2
+from pyrr import Quaternion, Vector3,Matrix44
+from revolve2.simulation import Terrain
+from revolve2.simulation.running import geometry
 
 
-def flat(size: Vector2 = Vector2([20.0, 20.0])) -> Terrain:
+def flat(size: Vector3 = Vector3([20.0, 20.0, 0.0])) -> Terrain:
     """
     Create a flat plane terrain.
 
@@ -22,9 +19,9 @@ def flat(size: Vector2 = Vector2([20.0, 20.0])) -> Terrain:
     """
     return Terrain(
         static_geometry=[
-            GeometryPlane(
-                pose=Pose(),
-                mass=0.0,
+            geometry.Plane(
+                position=Vector3(),
+                orientation=Quaternion(),
                 size=size,
             )
         ]
@@ -77,9 +74,9 @@ def crater(
 
     return Terrain(
         static_geometry=[
-            GeometryHeightmap(
-                pose=Pose(),
-                mass=0.0,
+            geometry.Heightmap(
+                position=Vector3(),
+                orientation=Quaternion(),
                 size=Vector3([size[0], size[1], max_height]),
                 base_thickness=0.1 + ruggedness,
                 heights=heightmap,
@@ -157,3 +154,63 @@ def bowl_heightmap(
         num_edges,
         dtype=float,
     )
+
+def slope(size: tuple[float, float], angle_deg: float = 15.0) -> Terrain:
+    """
+    Create a slope terrain with a flat area at the end.
+
+    :param size: Size of the slope (width, length)
+    :param angle_deg: The angle of the slope in degrees.
+    :returns: The created terrain.
+    """
+
+    # Calculate rotation quaternion based on the slope angle
+    rotation_matrix = Matrix44.from_eulers((0.0, np.radians(angle_deg), 0.0))
+    rotation_quat = Quaternion.from_matrix(rotation_matrix)
+
+    # Create the slope terrain
+    return Terrain(
+        static_geometry=[
+            geometry.Plane(
+                position=Vector3([0.0, 0.0, 0.0]),  # Start position
+                orientation=rotation_quat,          # Orientation based on the slope
+                size=Vector3([size[0], size[1], 0.0]),  # Size
+            )
+            # You can add a flat terrain at the end here
+        ]
+    )
+
+def slope_with_flat(size_slope: tuple[float, float], size_flat: tuple[float, float], angle_deg: float = 15.0) -> Terrain:
+    """
+    Create a slope terrain with a flat area at the end.
+
+    :param size_slope: Size of the slope (width, length)
+    :param size_flat: Size of the flat terrain (width, length)
+    :param angle_deg: The angle of the slope in degrees.
+    :returns: The created terrain.
+    """
+    rotation_matrix = Matrix44.from_eulers((0.0, np.radians(angle_deg), 0.0))
+    rotation_quat = Quaternion.from_matrix(rotation_matrix)
+    
+    # Assuming the slope starts at the origin, calculate the end position of the slope.
+    end_slope_y = size_slope[1] * np.cos(np.radians(angle_deg))
+    end_slope_z = -size_slope[1] * np.sin(np.radians(angle_deg))
+    
+    # Position of the flat terrain should start where the slope ends
+    flat_position = Vector3([0.0, end_slope_y, end_slope_z])
+
+    return Terrain(
+        static_geometry=[
+            geometry.Plane(
+                position=Vector3([0.0, 0.0, 0.0]),  # Slope starts at origin
+                orientation=rotation_quat,          # Orientation based on the slope
+                size=Vector3([size_slope[0], size_slope[1], 0.0]),  # Size
+            ),
+            geometry.Plane(
+                position=flat_position,  # Flat terrain starts where slope ends
+                orientation=Quaternion(), # No rotation
+                size=Vector3([size_flat[0], size_flat[1], 0.0]),  # Size
+            ),
+        ]
+    )
+
